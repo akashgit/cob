@@ -23,11 +23,39 @@ tol = 1e-35
 bs = 500
 K = 3
 do = 0.8
+n_dims=320
 
 
 def reset(seed=40):
     tf.reset_default_graph()
     tf.random.set_random_seed(seed)
+    
+        
+# def ratios_critic(x, prob = 1, K=3, deep=False):
+#     with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:
+        
+#         q1 = tf.get_variable('q1',[n_dims,n_dims])
+#         q2 = tf.get_variable('q2',[n_dims,n_dims])
+# #         q3 = tf.get_variable('q3',[n_dims,n_dims])
+        
+#         b1 = tf.get_variable('b1',n_dims)
+#         b2 = tf.get_variable('b2',n_dims)
+# #         b3 = tf.get_variable('b3',n_dims)
+        
+#         h1 = tf.matmul(x-b1,tf.matmul(q1,q1,transpose_b=True))
+#         h1 = tf.reduce_sum((x-b1)*h1,-1, keep_dims=True) + slim.fully_connected(x, 1, activation_fn=None)
+        
+#         h2 = tf.matmul(x-b2,tf.matmul(q2,q2,transpose_b=True))
+#         h2 = tf.reduce_sum((x-b2)*h2,-1, keep_dims=True) + slim.fully_connected(x, 1, activation_fn=None)
+        
+# #         h3 = tf.matmul(x,tf.matmul(q3,q3,transpose_b=True))
+# #         h3 = tf.reduce_sum(x*h3,-1, keep_dims=True) + b3
+        
+#         h3 = slim.fully_connected(tf.concat([h1,h2],1), 1, activation_fn=tf.nn.softplus)
+#         h3 = slim.fully_connected(h3, 1, activation_fn=None)
+        
+#         logits = tf.concat([h1,h2,h3],1)
+#         return logits
 
 def ratios_critic(x, prob = 1, K=3, deep=False):
     with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:
@@ -64,45 +92,46 @@ def ratios_critic(x, prob = 1, K=3, deep=False):
 
 
 
-def get_data(mu_1=0.,mu_2=2.,mu_3=2.,scale_p=0.1,scale_q=0.1,scale_m=1.):
 
-    p = tfd.MultivariateNormalFullCovariance(
-        loc=mu_1,
-        covariance_matrix=scale_p)
+# def get_data(mu_1=0.,mu_2=2.,mu_3=2.,scale_p=0.1,scale_q=0.1,scale_m=1.):
+
+#     p = tfd.MultivariateNormalFullCovariance(
+#         loc=mu_1,
+#         covariance_matrix=scale_p)
     
-    q = tfd.MultivariateNormalDiag(
-        loc=mu_2,
-        scale_diag=scale_q)
+#     q = tfd.MultivariateNormalDiag(
+#         loc=mu_2,
+#         scale_diag=scale_q)
     
-#     m = tfd.MultivariateStudentTLinearOperator(
-#     df=1,
-#     loc=mu_3,
-#     scale=tf.linalg.LinearOperatorLowerTriangular(scale_m))
+# #     m = tfd.MultivariateStudentTLinearOperator(
+# #     df=1,
+# #     loc=mu_3,
+# #     scale=tf.linalg.LinearOperatorLowerTriangular(scale_m))
     
     
-    m = tfp.distributions.Mixture(
-          cat=tfp.distributions.Categorical(probs=[.5,.5]),
-          components=[
-            p,
-            q
-        ])
+#     m = tfp.distributions.Mixture(
+#           cat=tfp.distributions.Categorical(probs=[.5,.5]),
+#           components=[
+#             p,
+#             q
+#         ])
     
-    p_samples = p.sample([bs]) 
-    q_samples = q.sample([bs])
-    #heavy tailed waymark
-    m_samples = m.sample([bs])
-    #linear waymark
-    alpha = tf.expand_dims(tfd.Uniform (0.,1.).sample([bs]),1)
-    m_samples = ((1-alpha)*p_samples + alpha*q_samples )+ m.sample([bs])
-#     m_samples = tf.sqrt(1-alpha*alpha)*p_samples + alpha*q_samples
+#     p_samples = p.sample([bs]) 
+#     q_samples = q.sample([bs])
+#     #heavy tailed waymark
+#     m_samples = m.sample([bs])
+#     #linear waymark
+#     alpha = tf.expand_dims(tfd.Uniform (0.,1.).sample([bs]),1)
+#     m_samples = ((1-alpha)*p_samples + alpha*q_samples )+ m.sample([bs])
+# #     m_samples = tf.sqrt(1-alpha*alpha)*p_samples + alpha*q_samples
     
-    return p, q, m, p_samples, q_samples, m_samples, m
+#     return p, q, m, p_samples, q_samples, m_samples, m
 
 
 def get_gt_ratio_kl(p,q,samples):
     ratio = p.log_prob(samples) - q.log_prob(samples)
     kl = tf.reduce_mean(ratio)
-    return ratio, kl, p.kl_divergence(q)
+    return ratio, kl
 
 def get_logits(samples, do=1., deep=False, training=True):
 #     samples = tf.expand_dims(samples,1)
@@ -138,9 +167,10 @@ def get_loss(p_samples,q_samples,m_samples,m_dist=None,do=0.8, deep=False):
 
 def get_optim(loss, lr=0.001, b1=0.001, b2=0.999):
     t_vars = tf.trainable_variables()
+    print(t_vars)
     c_vars = [var for var in t_vars if 'critic' in var.name]
-    optim = tf.train.AdamOptimizer(learning_rate=lr, beta1=b1, beta2=b2).minimize(loss, var_list=t_vars)
-#     optim = tf.train.AdamOptimizer(lr).minimize(loss, var_list=t_vars)
+#     optim = tf.train.AdamOptimizer(learning_rate=lr, beta1=b1, beta2=b2).minimize(loss, var_list=t_vars)
+    optim = tf.train.AdamOptimizer(lr).minimize(loss, var_list=t_vars)
     return optim
 
 
