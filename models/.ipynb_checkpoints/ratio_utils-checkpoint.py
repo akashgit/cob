@@ -55,11 +55,12 @@ def ratios_critic(x, prob = 1, K=3, deep=False):
         t2 = tf.get_variable('t2',1.)
         t3 = tf.get_variable('t3',1.)
 
-        h1 = 1e12*(x-q1)*(x-q1)*s1 + (x-q4)*t1 + b1 
+#         h1 = 1e12*(x-q1)*(x-q1)*s1 + (x-q4)*t1 + b1 
+        h1 = (x-q1)*(x-q1)*s1 + (x-q4)*t1 + b1 
         h2 = (x-q2)*(x-q2)*s2 + (x-q5)*t2 + b2
-#         h3 = 0.5*(h1) + 0.5*(h2) #+ t3*(x-q6) + b3# t3*(x-q6) + b3 #(x-q3)*(x-q3)*s3 + t3*(x-q6) + b3
-        h3 = slim.fully_connected(tf.concat([h1,h2],1), 1, activation_fn=tf.nn.softplus)
-        h3 = slim.fully_connected(h3, 1, activation_fn=None)
+        h3 = t3*(x-q6) + b3# t3*(x-q6) + b3 #(x-q3)*(x-q3)*s3 + t3*(x-q6) + b3
+#         h3 = slim.fully_connected(tf.concat([h1,h2],1), 1, activation_fn=tf.nn.softplus)
+#         h3 = slim.fully_connected(h3, 1, activation_fn=None)
         
         
 #         h1 = tf.matmul(x,tf.matmul(q1,q1,transpose_b=True))

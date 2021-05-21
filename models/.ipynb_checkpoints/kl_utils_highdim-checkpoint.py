@@ -19,43 +19,21 @@ import os
 tf.keras.backend.set_floatx('float32')
 
 
-tol = 1e-35
+tol = 1e+4
 bs = 500
 K = 3
 do = 0.8
 n_dims=320
 
+layer = tfp.layers.DenseFlipout(K, activation=None) # 100x3
+
+def get_layer():
+    return layer
 
 def reset(seed=40):
     tf.reset_default_graph()
     tf.random.set_random_seed(seed)
     
-        
-# def ratios_critic(x, prob = 1, K=3, deep=False):
-#     with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:
-        
-#         q1 = tf.get_variable('q1',[n_dims,n_dims])
-#         q2 = tf.get_variable('q2',[n_dims,n_dims])
-# #         q3 = tf.get_variable('q3',[n_dims,n_dims])
-        
-#         b1 = tf.get_variable('b1',n_dims)
-#         b2 = tf.get_variable('b2',n_dims)
-# #         b3 = tf.get_variable('b3',n_dims)
-        
-#         h1 = tf.matmul(x-b1,tf.matmul(q1,q1,transpose_b=True))
-#         h1 = tf.reduce_sum((x-b1)*h1,-1, keep_dims=True) + slim.fully_connected(x, 1, activation_fn=None)
-        
-#         h2 = tf.matmul(x-b2,tf.matmul(q2,q2,transpose_b=True))
-#         h2 = tf.reduce_sum((x-b2)*h2,-1, keep_dims=True) + slim.fully_connected(x, 1, activation_fn=None)
-        
-#         h3 = tf.matmul(x,tf.matmul(q3,q3,transpose_b=True))
-#         h3 = tf.reduce_sum(x*h3,-1, keep_dims=True) + b3
-        
-# #         h3 = slim.fully_connected(tf.concat([h1,h2],1), 1, activation_fn=tf.nn.softplus)
-# #         h3 = slim.fully_connected(h3, 1, activation_fn=None)
-        
-#         logits = tf.concat([h1,h2,h3],1)
-#         return logits
 
 def ratios_critic(x, prob = 1, K=3, deep=False):
     with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:
@@ -66,66 +44,7 @@ def ratios_critic(x, prob = 1, K=3, deep=False):
         h = slim.fully_connected(h, 100, activation_fn=tf.nn.softplus)
         h = tf.nn.dropout(h,prob)
         
-        return slim.fully_connected(h, K, activation_fn=None, biases_initializer = tf.constant_initializer(0)) #tf.constant_initializer(0))
-    
-# def ratios_critic(x, prob = 1, K=3, deep=False):
-#     with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:    
-
-#         l1 = slim.fully_connected(x, 20, activation_fn=tf.nn.softplus)
-#         l1 = tf.nn.dropout(l1,prob)
-#         l1 = slim.fully_connected(l1, 10, activation_fn=tf.nn.softplus)
-#         l1 = tf.nn.dropout(l1,prob)
-
-#         l2 = slim.fully_connected(x, 20, activation_fn=tf.nn.softplus)
-#         l2 = tf.nn.dropout(l2,prob)
-#         l2 = slim.fully_connected(l2, 10, activation_fn=tf.nn.softplus)
-#         l2 = tf.nn.dropout(l2,prob)
-
-#         l3 = slim.fully_connected(x, 20, activation_fn=tf.nn.softplus)
-#         l3 = tf.nn.dropout(l3,prob)
-#         l3 = slim.fully_connected(l3, 10, activation_fn=tf.nn.softplus)
-#         l3 = tf.nn.dropout(l3,prob)
-        
-#         log_d = tf.concat([l1,l2,l3],1)
-#         log_d = slim.fully_connected(log_d, K, activation_fn=None) 
-#     return tf.squeeze(log_d)
-
-
-
-
-# def get_data(mu_1=0.,mu_2=2.,mu_3=2.,scale_p=0.1,scale_q=0.1,scale_m=1.):
-
-#     p = tfd.MultivariateNormalFullCovariance(
-#         loc=mu_1,
-#         covariance_matrix=scale_p)
-    
-#     q = tfd.MultivariateNormalDiag(
-#         loc=mu_2,
-#         scale_diag=scale_q)
-    
-# #     m = tfd.MultivariateStudentTLinearOperator(
-# #     df=1,
-# #     loc=mu_3,
-# #     scale=tf.linalg.LinearOperatorLowerTriangular(scale_m))
-    
-    
-#     m = tfp.distributions.Mixture(
-#           cat=tfp.distributions.Categorical(probs=[.5,.5]),
-#           components=[
-#             p,
-#             q
-#         ])
-    
-#     p_samples = p.sample([bs]) 
-#     q_samples = q.sample([bs])
-#     #heavy tailed waymark
-#     m_samples = m.sample([bs])
-#     #linear waymark
-#     alpha = tf.expand_dims(tfd.Uniform (0.,1.).sample([bs]),1)
-#     m_samples = ((1-alpha)*p_samples + alpha*q_samples )+ m.sample([bs])
-# #     m_samples = tf.sqrt(1-alpha*alpha)*p_samples + alpha*q_samples
-    
-#     return p, q, m, p_samples, q_samples, m_samples, m
+        return h #slim.fully_connected(h, K, activation_fn=None, biases_initializer = tf.constant_initializer(0)) #tf.constant_initializer(0))
 
 
 def get_gt_ratio_kl(p,q,samples):
@@ -134,8 +53,7 @@ def get_gt_ratio_kl(p,q,samples):
     return ratio, kl
 
 def get_logits(samples, do=1., deep=False, training=True):
-#     samples = tf.expand_dims(samples,1)
-    return ratios_critic(samples,do,deep=deep)
+    return layer(ratios_critic(samples,do,deep=deep))
 
 def get_kl_from_cob(samples):
     log_rat = get_logits(samples)
@@ -159,11 +77,10 @@ def get_loss(p_samples,q_samples,m_samples,m_dist=None,do=0.8, deep=False):
     disc_loss_2 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logQ, labels=label_b))
     disc_loss_3 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logM, labels=label_c))
     
-    loss = disc_loss_1 + disc_loss_2 + disc_loss_3
+    dloss = disc_loss_1 + disc_loss_2 + disc_loss_3
+    kl_loss = sum(layer.losses)/tol
     
-    if m_dist != None:
-        loss += 1e-5*tf.reduce_mean(m_dist.log_prob(m_samples) - logM[:,2])
-    return loss
+    return  dloss+kl_loss
 
 def get_optim(loss, lr=0.001, b1=0.001, b2=0.999):
     t_vars = tf.trainable_variables()
@@ -266,5 +183,44 @@ def sample_and_plot(sess, kld, kl_from_pq, kl_from_cob, p_samples, q_samples, m_
     
     plt.savefig(data_dir+str(mu_3)+".jpg")
     
+kl_post_store=[]
+def kl_plot(sess,enc_m,ax,ax1, training=True):
+    def log_ratio_predictive(x_, w, b):
+        pred = x_@w 
+        pred = pred[0,:,:] - pred[1,:,:]
+        return pred, pred.mean(1), pred.std(1)
+    
+    n_posterior_samples=10
+
+    candidate_ws = []
+    candidate_bs = []
+#     layer = get_layer()
+    if training:
+        print(f"Taking {n_posterior_samples} samples from posterior distributions on weights\n")
+        w_draw = layer.kernel_posterior.sample()
+    else:
+        print(f"Taking {n_posterior_samples} samples from prior distributions on weights\n")
+        w_draw = layer.kernel_prior.sample()
+    b_draw = layer.bias_posterior.sample()
+
+    for mc in range(n_posterior_samples):
+        w_, b_ = sess.run([w_draw, b_draw])
+        candidate_ws.append(w_)
+        candidate_bs.append(b_)
+
+
+    candidate_ws = np.array(candidate_ws).astype(np.float32)
+    candidate_bs = np.array(candidate_bs).astype(np.float32)
+
+    kl_post,sample_mean,sample_var = log_ratio_predictive(enc_m, candidate_ws.T, candidate_bs.T)
+#     kl_post_store.append(kl_post.mean(0))
+    print(kl_post.shape) # batch x post_samples
+#     ax.boxplot(kl_post_store,widths=0.5,notch=True, showfliers=False)
+    ax.clear()
+    ax.scatter(sample_mean,sample_var)
+#     ax.boxplot(kl_post.T,widths=0.5,notch=True, showfliers=False)
+    ax1.clear()
+    ax1.hist(sample_var, density=True, histtype='stepfilled',label='Post Var')
+    return np.mean([sm for sm,sv in zip(sample_mean, sample_var) if sv<20.0])
     
     

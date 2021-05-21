@@ -35,14 +35,45 @@ def reset(seed=40):
     tf.random.set_random_seed(seed)
 
     
-def ratios_critic(x, prob = 1):
+# def ratios_critic(x, prob = 1):
+#     with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:
+#         x = tf.expand_dims(x,1)
+#         h = slim.fully_connected(x, 100, activation_fn=tf.nn.softplus)
+#         h = tf.nn.dropout(h,prob)
+#         h = slim.fully_connected(h, 50, activation_fn=tf.nn.softplus)
+#         h = tf.nn.dropout(h,prob)
+#     return h#tf.expand_dims(h,0)
+
+def ratios_critic(x, prob = 1, K=3, deep=False):
     with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:
         x = tf.expand_dims(x,1)
-        h = slim.fully_connected(x, 100, activation_fn=tf.nn.softplus)
-        h = tf.nn.dropout(h,prob)
-        h = slim.fully_connected(h, 50, activation_fn=tf.nn.softplus)
-        h = tf.nn.dropout(h,prob)
-    return h#tf.expand_dims(h,0)
+        q1 = tf.get_variable('q1',1.)
+        q2 = tf.get_variable('q2',1.)
+        q3 = tf.get_variable('q3',1.)
+        
+        q4 = tf.get_variable('q4',1.)
+        q5 = tf.get_variable('q5',1.)
+        q6 = tf.get_variable('q6',1.)
+        
+        b1 = tf.get_variable('b1',1.)
+        b2 = tf.get_variable('b2',1.)
+        b3 = tf.get_variable('b3',1.)
+        
+        s1 = tf.get_variable('s1',1.)
+        s2 = tf.get_variable('s2',1.)
+        s3 = tf.get_variable('s3',1.)
+        
+        t1 = tf.get_variable('t1',1.)
+        t2 = tf.get_variable('t2',1.)
+        t3 = tf.get_variable('t3',1.)
+
+        h1 = (x-q1)*(x-q1)*s1 + (x-q4)*t1 + b1 
+        h2 = (x-q2)*(x-q2)*s2 + (x-q5)*t2 + b2
+        h3 = t3*(x-q6) + b3
+        
+        logits = tf.concat([h1,h2,h3],1)
+        
+        return logits
 
 
 
@@ -100,7 +131,8 @@ def get_loss(p_samples,q_samples,m_samples,do=0.8):
 def get_optim(loss, lr=0.001, b1=0.001, b2=0.999):
     t_vars = tf.trainable_variables()
     c_vars = [var for var in t_vars if 'critic' in var.name]
-    optim = tf.train.AdamOptimizer(learning_rate=lr, beta1=b1, beta2=b2).minimize(loss, var_list=t_vars)
+#     optim = tf.train.AdamOptimizer(learning_rate=lr, beta1=b1, beta2=b2).minimize(loss, var_list=t_vars)
+    optim = tf.train.AdamOptimizer(lr).minimize(loss, var_list=t_vars)
     return optim
 
 

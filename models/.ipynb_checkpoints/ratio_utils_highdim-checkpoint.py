@@ -48,11 +48,11 @@ def reset(seed=40):
 #         h2 = tf.matmul(x-b2,tf.matmul(q2,q2,transpose_b=True))
 #         h2 = tf.reduce_sum((x-b2)*h2,-1, keep_dims=True) + slim.fully_connected(x, 1, activation_fn=None)
         
-# #         h3 = tf.matmul(x,tf.matmul(q3,q3,transpose_b=True))
-# #         h3 = tf.reduce_sum(x*h3,-1, keep_dims=True) + b3
+#         h3 = tf.matmul(x,tf.matmul(q3,q3,transpose_b=True))
+#         h3 = tf.reduce_sum(x*h3,-1, keep_dims=True) + b3
         
-#         h3 = slim.fully_connected(tf.concat([h1,h2],1), 1, activation_fn=tf.nn.softplus)
-#         h3 = slim.fully_connected(h3, 1, activation_fn=None)
+# #         h3 = slim.fully_connected(tf.concat([h1,h2],1), 1, activation_fn=tf.nn.softplus)
+# #         h3 = slim.fully_connected(h3, 1, activation_fn=None)
         
 #         logits = tf.concat([h1,h2,h3],1)
 #         return logits
