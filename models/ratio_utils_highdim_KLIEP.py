@@ -1,6 +1,8 @@
 import warnings
 warnings.filterwarnings('ignore')
 import tensorflow as tf
+import tensorflow.keras.initializers as initializers
+from tensorflow.keras import regularizers
 import numpy as np
 import seaborn as sns; 
 import tensorflow_probability as tfp
@@ -15,109 +17,89 @@ from time import sleep
 from IPython.display import display, clear_output
 import pickle
 import os
-from scipy.linalg import cholesky
-import math
 
-
+tf.keras.backend.set_floatx('float32')
 
 
 tol = 1e-35
-bs = 100000
+bs = 1000
 K = 3
 do = 0.8
+n_dims=320
+
+
 
 
 def reset(seed=40):
     tf.reset_default_graph()
     tf.random.set_random_seed(seed)
     
-
-def ratios_critic(weights, samples):
-
-    q1,q2,q4,q5,q6,s1,s2,t1,t2,t3,b1,b2,b3 = weights
-
-    x = tf.expand_dims(samples,1)
-    h1 = (x-q1)*(x-q1)*s1 + (x-q4)*t1 + b1 
-    h2 = (x-q2)*(x-q2)*s2 + (x-q5)*t2 + b2
-    h3 = t3*(x-q6) + b3
-
-    logits = tf.concat([h1,h2,h3],1)
-
-    return logits
+    
+    
+def ratios_critic(h, prob = 1, K=3, deep=False):
+    with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:
+        init = tf.keras.initializers.normal(stddev=2.)
+        
+        regularizer = tf.contrib.layers.l2_regularizer(1.)
+        
+        h = slim.fully_connected(h, 500, activation_fn=tf.nn.softplus, weights_regularizer=slim.l2_regularizer(.0)) #change back to 50
+        h = slim.fully_connected(h, 100, activation_fn=tf.nn.softplus, weights_regularizer=slim.l2_regularizer(.0)) #change back to 10
+        
+        return slim.fully_connected(h, K, activation_fn=None, weights_regularizer=slim.l2_regularizer(.0))
 
 
 def get_gt_ratio_kl(p,q,samples):
     ratio = p.log_prob(samples) - q.log_prob(samples)
     kl = tf.reduce_mean(ratio)
-    try:
-        true_kl = p.kl_divergence(q)
-    except:
-        true_kl = "-1"
+    return ratio, kl
+
+def get_logits(samples,do=1., deep=False, training=True):
+#     samples = tf.expand_dims(samples,1)
+    return ratios_critic(samples,do,deep=deep)
+
+def get_kl_from_cob(samples_p, samples_q):
+    log_rat = get_logits(samples_p)
+    V_p = log_rat[:,0]#-log_rat[:,1]
+    return tf.reduce_mean(V_p)
+
+# def get_kl_from_cob(samples_p, samples_q):
+#     log_rat = get_logits(samples_p)
+#     V_p = log_rat[:,0]-log_rat[:,1]
     
-    return ratio, kl, true_kl
-
-def get_logits(weights, samples, do=1., deep=False, training=True):
-    return ratios_critic(weights,samples)
-
-def get_kl_from_cob(weights,samples):
-    log_rat = get_logits(weights,samples)
-    return tf.reduce_mean(log_rat[:,0]-log_rat[:,1])
-
-def get_loss(p_samples,q_samples,m_samples, prior, m_dist=None, do=0.8, deep=False):
+#     log_rat = get_logits(samples_q)
+#     V_q = log_rat[:,0]-log_rat[:,1]
     
-    lam = 0.001 # plot by varying lam
+#     return 1 + tf.reduce_mean(V_p) - tf.reduce_mean(tf.exp(V_q))
+
+
+
+
+
+def get_loss(p_samples,q_samples,m_samples,langrange,m_dist=None,do=0.8, deep=False):
     
-    def ratios_critic(q1,q2,q4,q5,q6,s1,s2,t1,t2,t3,b1,b2,b3):
-        with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:
-
-#             q1,q2,q4,q5,q6,s1,s2,t1,t2,t3,b1,b2,b3 = weights
-            weights = [q1,q2,q4,q5,q6,s1,s2,t1,t2,t3,b1,b2,b3]
-            x = tf.expand_dims(p_samples,1)
-            h1 = (x-q1)*(x-q1)*s1 + (x-q4)*t1 + b1 
-            h2 = (x-q2)*(x-q2)*s2 + (x-q5)*t2 + b2
-            h3 = t3*(x-q6) + b3
-
-            logP = tf.concat([h1,h2,h3],1)
-
-            x = tf.expand_dims(q_samples,1)
-            h1 = (x-q1)*(x-q1)*s1 + (x-q4)*t1 + b1 
-            h2 = (x-q2)*(x-q2)*s2 + (x-q5)*t2 + b2
-            h3 = t3*(x-q6) + b3
-
-            logQ = tf.concat([h1,h2,h3],1)
-
-            x = tf.expand_dims(m_samples,1)
-            h1 = (x-q1)*(x-q1)*s1 + (x-q4)*t1 + b1 
-            h2 = (x-q2)*(x-q2)*s2 + (x-q5)*t2 + b2
-            h3 = t3*(x-q6) + b3
-
-            logM = tf.concat([h1,h2,h3],1)
-
-            a = np.tile([1,0,0],bs)
-            b = np.tile([0,1,0],bs)
-            c = np.tile([0,0,1],bs)
-
-            label_a = tf.reshape(a,[bs,K])
-            label_b = tf.reshape(b,[bs,K])
-            label_c = tf.reshape(c,[bs,K])
-
-            disc_loss_1 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logP, labels=label_a))
-            disc_loss_2 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logQ, labels=label_b))
-            disc_loss_3 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logM, labels=label_c))
-
-            loss = -(disc_loss_1 + disc_loss_2 + disc_loss_3) + lam*tf.reduce_sum(prior.log_prob(weights))
-
-        return loss
+    logP = get_logits(p_samples,do,deep=deep)
+    logQ = get_logits(q_samples,do,deep=deep)
+    logM = get_logits(m_samples,do,deep=deep)
     
-    return ratios_critic
+    loss = -tf.reduce_mean(logP[:,0]) + (2+langrange)*tf.abs(tf.reduce_mean(tf.exp(logQ[:,0])-1))
+    reg_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+    
+    return loss #+ 0.001 * sum(reg_losses)
 
+    
 def get_optim(loss, lr=0.001, b1=0.001, b2=0.999):
     t_vars = tf.trainable_variables()
+    print(t_vars)
     c_vars = [var for var in t_vars if 'critic' in var.name]
 #     optim = tf.train.AdamOptimizer(learning_rate=lr, beta1=b1, beta2=b2).minimize(loss, var_list=t_vars)
-    optim = tf.train.AdamOptimizer(lr).minimize(loss, var_list=t_vars)
-    return optim
-
+#     optim = tf.train.AdamOptimizer(lr).minimize(loss, var_list=t_vars)
+    
+    global_step = tf.Variable(0, trainable=False)
+    learning_rate = tf.compat.v1.train.cosine_decay(lr, global_step, 50000, alpha=1e-1, name=None)
+    # Passing global_step to minimize() will increment it at each step.
+    optim = tf.train.AdamOptimizer(learning_rate).minimize(loss, global_step=global_step)
+    
+    return optim 
 
 def train(sess, loss, optim, plotlosses, N=30000):
 
@@ -142,7 +124,7 @@ def sample_and_plot(sess, kld, kl_from_pq, kl_from_cob, p_samples, q_samples, m_
 
 
     feed_dict = {}
-    kl_true, kl_cob, p_s, q_s, m_s, lpq, lpq_from_cob_dre_direct = sess.run([kl_from_pq, kl_from_cob, p_samples, q_samples, m_samples,
+    kl_ratio, kl_true, kl_cob, p_s, q_s, m_s, lpq, lpq_from_cob_dre_direct = sess.run([kld, kl_from_pq, kl_from_cob, p_samples, q_samples, m_samples,
                                                                                 log_ratio_p_q,  log_ratio_p_m],
                                                                               feed_dict=feed_dict)
     
@@ -153,15 +135,15 @@ def sample_and_plot(sess, kld, kl_from_pq, kl_from_cob, p_samples, q_samples, m_
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
     
-#     f = open(data_dir+"KLD"+".txt", "a")
-#     f.write("GT for mu_3 = "+str(mu_3)+": "+str(kl_ratio)+"\nGT-est: "+str(kl_true)+"\nCoB: "+str(kl_cob)+"\n----------\n")
-#     f.close()
+    f = open(data_dir+"KLD"+".txt", "a")
+    f.write("GT for mu_3 = "+str(mu_3)+": "+str(kl_ratio)+"\nGT-est: "+str(kl_true)+"\nCoB: "+str(kl_cob)+"\n----------\n")
+    f.close()
     log_ratio_store.append(lpq)
     log_r_p_from_m_direct_store.append(lpq_from_cob_dre_direct)
     
     pickle.dump(log_r_p_from_m_direct_store, open(data_dir+"log_r_p_from_m_direct_store"+str(mu_3)+".p", "wb"))
     pickle.dump(m_s, open(data_dir+"xs"+str(mu_3)+".p", "wb"))
-#     pickle.dump(log_ratio_store, open(data_dir+"log_ratio_store"+str(mu_3)+".p", "wb"))
+    pickle.dump(log_ratio_store, open(data_dir+"log_ratio_store"+str(mu_3)+".p", "wb"))
     
     xs = m_s
 
@@ -209,7 +191,7 @@ def sample_and_plot(sess, kld, kl_from_pq, kl_from_cob, p_samples, q_samples, m_
     ax3.set_xlim([-6,10])
     ax3.set_ylim([-600,400])
     
-#     plt.savefig(data_dir+str(mu_3)+".jpg")
+    plt.savefig(data_dir+str(mu_3)+".jpg")
     
     
     

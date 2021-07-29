@@ -1,6 +1,8 @@
 import warnings
 warnings.filterwarnings('ignore')
 import tensorflow as tf
+import tensorflow.keras.initializers as initializers
+from tensorflow.keras import regularizers
 import numpy as np
 import seaborn as sns; 
 import tensorflow_probability as tfp
@@ -20,7 +22,7 @@ tf.keras.backend.set_floatx('float32')
 
 
 tol = 1e-35
-bs = 500
+bs = 1000
 K = 3
 do = 0.8
 n_dims=320
@@ -29,66 +31,213 @@ n_dims=320
 def reset(seed=40):
     tf.reset_default_graph()
     tf.random.set_random_seed(seed)
-    
-        
+
 # def ratios_critic(x, prob = 1, K=3, deep=False):
 #     with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:
         
-#         q1 = tf.get_variable('q1',[n_dims,n_dims])
-#         q2 = tf.get_variable('q2',[n_dims,n_dims])
-# #         q3 = tf.get_variable('q3',[n_dims,n_dims])
+#         h = slim.fully_connected(x, 500, activation_fn=tf.nn.softplus) #change back to 50
+#         h = tf.nn.dropout(h,prob)
         
-#         b1 = tf.get_variable('b1',n_dims)
-#         b2 = tf.get_variable('b2',n_dims)
-# #         b3 = tf.get_variable('b3',n_dims)
+#         h = slim.fully_connected(h, 100, activation_fn=tf.nn.softplus) #change back to 10
+#         h = tf.nn.dropout(h,prob)
         
-#         h1 = tf.matmul(x-b1,tf.matmul(q1,q1,transpose_b=True))
-#         h1 = tf.reduce_sum((x-b1)*h1,-1, keep_dims=True) + slim.fully_connected(x, 1, activation_fn=None)
-        
-#         h2 = tf.matmul(x-b2,tf.matmul(q2,q2,transpose_b=True))
-#         h2 = tf.reduce_sum((x-b2)*h2,-1, keep_dims=True) + slim.fully_connected(x, 1, activation_fn=None)
-        
-#         h3 = tf.matmul(x,tf.matmul(q3,q3,transpose_b=True))
-#         h3 = tf.reduce_sum(x*h3,-1, keep_dims=True) + b3
-        
-# #         h3 = slim.fully_connected(tf.concat([h1,h2],1), 1, activation_fn=tf.nn.softplus)
-# #         h3 = slim.fully_connected(h3, 1, activation_fn=None)
-        
-#         logits = tf.concat([h1,h2,h3],1)
-#         return logits
-
-def ratios_critic(x, prob = 1, K=3, deep=False):
-    with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:
-        
-        h = slim.fully_connected(x, 500, activation_fn=tf.nn.softplus)
-        h = tf.nn.dropout(h,prob)
-        
-        h = slim.fully_connected(h, 100, activation_fn=tf.nn.softplus)
-        h = tf.nn.dropout(h,prob)
-        
-        return slim.fully_connected(h, K, activation_fn=None, biases_initializer = tf.constant_initializer(0)) #tf.constant_initializer(0))
+#         return slim.fully_connected(h, K, activation_fn=None, biases_initializer = tf.constant_initializer(0))
     
-# def ratios_critic(x, prob = 1, K=3, deep=False):
-#     with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:    
 
-#         l1 = slim.fully_connected(x, 20, activation_fn=tf.nn.softplus)
-#         l1 = tf.nn.dropout(l1,prob)
-#         l1 = slim.fully_connected(l1, 10, activation_fn=tf.nn.softplus)
-#         l1 = tf.nn.dropout(l1,prob)
-
-#         l2 = slim.fully_connected(x, 20, activation_fn=tf.nn.softplus)
-#         l2 = tf.nn.dropout(l2,prob)
-#         l2 = slim.fully_connected(l2, 10, activation_fn=tf.nn.softplus)
-#         l2 = tf.nn.dropout(l2,prob)
-
-#         l3 = slim.fully_connected(x, 20, activation_fn=tf.nn.softplus)
-#         l3 = tf.nn.dropout(l3,prob)
-#         l3 = slim.fully_connected(l3, 10, activation_fn=tf.nn.softplus)
-#         l3 = tf.nn.dropout(l3,prob)
+def ratios_critic(x, labels, prob = 1, K=3, deep=False):
+    with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:
+        init = tf.keras.initializers.normal(stddev=2.)
         
-#         log_d = tf.concat([l1,l2,l3],1)
-#         log_d = slim.fully_connected(log_d, K, activation_fn=None) 
-#     return tf.squeeze(log_d)
+        regularizer = tf.contrib.layers.l2_regularizer(1.)
+        
+        x_emb = slim.fully_connected(x, 100, activation_fn=None, biases_initializer = tf.constant_initializer(0))
+        l_emb = slim.fully_connected(labels, 100, activation_fn=None, biases_initializer = tf.constant_initializer(0))
+        
+        h = tf.concat([x_emb,l_emb],1)
+        
+        h = slim.fully_connected(h, 100, activation_fn=tf.nn.softplus, weights_regularizer=slim.l2_regularizer(.0)) #change back to 50
+        h = slim.fully_connected(h, 100, activation_fn=tf.nn.softplus, weights_regularizer=slim.l2_regularizer(.0)) #change back to 10
+        
+        h_hat = tf.reduce_mean(h[:bs],0,keep_dims=True) # 1x320
+        
+        theta = tf.get_variable('theta',(1,100),regularizer=regularizer)
+        
+        partial_ratio = tf.log(tf.maximum(1e-20,tf.matmul(h[:bs], theta, transpose_b=True)))
+        
+        
+        return h, h_hat, theta, partial_ratio
+
+    
+def get_log_ratio(samples):
+    a = tf.tile([1.,0.,0.],[bs])
+    b = tf.tile([0.,1.,0.],[bs])
+
+    label_a = tf.reshape(a,[bs,K])
+    label_b = tf.reshape(b,[bs,K])
+    
+    _,_,_,log_p = ratios_critic(samples,label_a)
+    _,_,_,log_q = ratios_critic(samples,label_b)
+    return log_p - log_q
+
+
+    
+    
+# def ratios_critic(x, prob = 1, K=3, deep=False, l1=K,l2=K,input_dim=320):
+#     with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:
+        
+#         init = tf.keras.initializers.normal(stddev=0.001)
+        
+#         def spectral_norm(w, u, iteration=1):
+#             w_shape = w.shape.as_list()
+#             w = tf.reshape(w, [-1, w_shape[-1]])
+
+            
+
+#             u_hat = u
+#             v_hat = None
+#             for i in range(iteration):
+#                 """
+#                 power iteration
+#                 Usually iteration = 1 will be enough
+#                 """
+#                 v_ = tf.matmul(u_hat, tf.transpose(w))
+#                 v_hat = tf.nn.l2_normalize(v_)
+
+#                 u_ = tf.matmul(v_hat, w)
+#                 u_hat = tf.nn.l2_normalize(u_)
+
+#             u_hat = tf.stop_gradient(u_hat)
+#             v_hat = tf.stop_gradient(v_hat)
+
+#             sigma = tf.matmul(tf.matmul(v_hat, w), tf.transpose(u_hat))
+
+#             with tf.control_dependencies([u.assign(u_hat)]):
+#                 w_norm = w / sigma
+#                 w_norm = tf.reshape(w_norm, w_shape)
+
+
+#             return w_norm
+        
+#         u1 = tf.get_variable("u1", [1, l1], initializer=tf.random_normal_initializer(), trainable=False)
+#         u2 = tf.get_variable("u2", [1, l2], initializer=tf.random_normal_initializer(), trainable=False)
+#         u4 = tf.get_variable("u4", [1, input_dim], initializer=tf.random_normal_initializer(), trainable=False)
+#         u5 = tf.get_variable("u5", [1, input_dim], initializer=tf.random_normal_initializer(), trainable=False)
+#         u6 = tf.get_variable("u6", [1, input_dim], initializer=tf.random_normal_initializer(), trainable=False)
+        
+#         W1 = spectral_norm(tf.get_variable('W1',(K-1,l1),initializer=init),u1)
+#         W2 = spectral_norm(tf.get_variable('W2',(l1,l2),initializer=init),u2)
+        
+#         W4 = spectral_norm(tf.get_variable('W4',(input_dim,input_dim),initializer=init),u4)
+#         W5 = spectral_norm(tf.get_variable('W5',(input_dim,input_dim),initializer=init),u5)
+#         W6 = spectral_norm(tf.get_variable('W6',(input_dim,input_dim),initializer=init),u6)
+        
+#         b1 = tf.get_variable('b1',(l1))
+#         b2 = tf.get_variable('b2',(l2))
+#         b3 = tf.get_variable('b3',(K))
+        
+#         mu1 = tf.get_variable('mu1',(input_dim),initializer=init)
+#         mu2 = tf.get_variable('mu2',(input_dim),initializer=init)
+#         mu3 = tf.get_variable('mu3',(input_dim),initializer=init)
+        
+#         b4 = tf.get_variable('b4',(1))
+#         b5 = tf.get_variable('b5',(1))
+#         b6 = tf.get_variable('b6',(1))
+        
+#         x1 = x-mu1
+#         W_psd = tf.matmul(W4,W4,transpose_b=True)
+#         h = tf.matmul(x1,W_psd)
+#         h = tf.matmul(h,x1, transpose_b=True)
+#         h1 = tf.reduce_sum(h,-1,keep_dims=True) + b4
+        
+#         x2 = x-mu2
+#         W_psd = tf.matmul(W5,W5,transpose_b=True)
+#         h = tf.matmul(x2,W_psd)
+#         h = tf.matmul(h,x2, transpose_b=True)
+#         h2 = tf.reduce_sum(h,-1,keep_dims=True) + b5
+        
+# #         x3 = x-mu3
+# #         W_psd = tf.matmul(W6,W6,transpose_b=True)
+# #         h = tf.matmul(x3,W_psd)
+# #         h = tf.matmul(h,x3, transpose_b=True)
+# #         h3 = tf.reduce_sum(h,-1,keep_dims=True) + b6
+        
+#         h = tf.concat([h1,h2],1)
+        
+#         h = tf.nn.leaky_relu(tf.matmul(h,W1)+b1)
+#         h = tf.matmul(h,W2)+b2
+        
+
+    
+#         return h
+    
+
+# def ratios_critic(x, prob = 1, K=3, deep=False, l0=320):
+#     with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:
+        
+#         init = tf.keras.initializers.normal(stddev=0.001)
+        
+#         regularizer = tf.contrib.layers.l2_regularizer(0.01)
+        
+#         def tf_enforce_symmetric_and_pos_diag(A, shift=5.):
+
+#             mask = tf.ones_like(A)
+#             ldiag_mask = tf.matrix_band_part(mask, -1, 0)
+#             diag_mask = tf.matrix_band_part(mask, 0, 0)
+#             strict_ldiag_mask = ldiag_mask - diag_mask
+
+#             B = strict_ldiag_mask * A
+#             if len(A.get_shape().as_list()) == 3:
+#                 B += tf.transpose(B, [0, 2, 1])
+#             else:
+#                 B += tf.transpose(B)
+
+#             B += diag_mask * tf.exp(A - shift)
+
+#             return B
+        
+#         u4 = tf.get_variable("u4", [1, l0], initializer=tf.random_normal_initializer(), trainable=False)
+#         u5 = tf.get_variable("u5", [1, l0], initializer=tf.random_normal_initializer(), trainable=False)
+#         u6 = tf.get_variable("u6", [1, l0], initializer=tf.random_normal_initializer(), trainable=False)
+        
+#         W4 = tf_enforce_symmetric_and_pos_diag(tf.get_variable('W4',(l0,l0),initializer=init,
+#                                                     regularizer=regularizer))
+#         W5 = tf_enforce_symmetric_and_pos_diag(tf.get_variable('W5',(l0,l0),initializer=init,
+#                                                     regularizer=regularizer))
+#         W6 = tf_enforce_symmetric_and_pos_diag(tf.get_variable('W6',(l0,l0),initializer=init,
+#                                                     regularizer=regularizer))
+        
+        
+#         mu1 = tf.get_variable('mu1',(l0),initializer=initializers.Zeros())
+#         mu2 = tf.get_variable('mu2',(l0),initializer=initializers.Zeros())
+#         mu3 = tf.get_variable('mu3',(l0),initializer=initializers.Zeros())
+        
+#         b4 = tf.get_variable('b4',(1))
+#         b5 = tf.get_variable('b5',(1))
+#         b6 = tf.get_variable('b6',(1))
+        
+#         x1 = x-mu1
+#         h = tf.matmul(x1,W4)
+#         h = tf.matmul(h,x1, transpose_b=True)
+#         h1 = -(tf.reduce_sum(h,-1,keep_dims=True) + b4)
+        
+#         x2 = x-mu2
+#         h = tf.matmul(x2,W5)
+#         h = tf.matmul(h,x2, transpose_b=True)
+#         h2 = -(tf.reduce_sum(h,-1,keep_dims=True) + b5)
+        
+# #         x3 = x-mu3
+# #         h = tf.matmul(x3,W5)
+# #         h = tf.matmul(h,x3, transpose_b=True)
+# #         h3 = -(tf.reduce_sum(h,-1,keep_dims=True) + b6)
+ 
+#         h3 = slim.fully_connected(x, K, activation_fn=tf.nn.softplus, weights_regularizer=slim.l2_regularizer(.01))
+#         h3 = slim.fully_connected(h3, 1, activation_fn=None, weights_regularizer=slim.l2_regularizer(.01))
+        
+#         h = tf.concat([h1,h2,h3],1)
+# #         h = slim.fully_connected(h, K, activation_fn=None, weights_regularizer=slim.l2_regularizer(.1))
+
+#         return h
+
 
 
 
@@ -133,37 +282,134 @@ def get_gt_ratio_kl(p,q,samples):
     kl = tf.reduce_mean(ratio)
     return ratio, kl
 
-def get_logits(samples, do=1., deep=False, training=True):
+def get_logits(samples, labels, do=1., deep=False, training=True):
 #     samples = tf.expand_dims(samples,1)
-    return ratios_critic(samples,do,deep=deep)
+    return ratios_critic(samples,labels, do,deep=deep)
 
-def get_kl_from_cob(samples):
-    log_rat = get_logits(samples)
-    return tf.reduce_mean(log_rat[:,0]-log_rat[:,1])
+def get_kl_from_cob(samples_p, samples_q):
+    return tf.reduce_mean(get_log_ratio(samples_p))
+
+# def get_kl_from_cob(samples_p, samples_q):
+#     log_rat = get_logits(samples_p)
+#     V_p = log_rat[:,0]-log_rat[:,1]
+    
+#     log_rat = get_logits(samples_q)
+#     V_q = log_rat[:,0]-log_rat[:,1]
+    
+#     return 1 + tf.reduce_mean(V_p) - tf.reduce_mean(tf.exp(V_q))
 
 def get_loss(p_samples,q_samples,m_samples,m_dist=None,do=0.8, deep=False):
     
-    logP = get_logits(p_samples,do,deep=deep)
-    logQ = get_logits(q_samples,do,deep=deep)
-    logM = get_logits(m_samples,do,deep=deep)
-    
-    a = np.tile([1,0,0],bs)
-    b = np.tile([0,1,0],bs)
-    c = np.tile([0,0,1],bs)
+    a = tf.tile([1.,0.,0.],[K*bs])
+    b = tf.tile([0.,1.,0.],[K*bs])
+    c = tf.tile([0.,0.,1.],[K*bs])
 
-    label_a = tf.reshape(a,[bs,K])
-    label_b = tf.reshape(b,[bs,K])
-    label_c = tf.reshape(c,[bs,K])
+    label_a = tf.reshape(a,[K*bs,K])
+    label_b = tf.reshape(b,[K*bs,K])
+    label_c = tf.reshape(c,[K*bs,K])
+    
+    p_samples_ = tf.concat([p_samples,q_samples,m_samples],0)  
+    q_samples_ = tf.concat([q_samples,m_samples,p_samples],0)
+    m_samples_ = tf.concat([m_samples,p_samples,q_samples],0)
+    
+    h_p, h_hat_p, theta, _ = get_logits(p_samples_,label_a,do,deep=deep)
+    h_q, h_hat_q, _, _ = get_logits(q_samples_,label_b,do,deep=deep)
+    h_m, h_hat_m, _, _ = get_logits(m_samples_,label_c,do,deep=deep)
+    
+    
+    H_hat_p = tf.reduce_mean(tf.expand_dims(h_p,-1)@tf.expand_dims(h_p,1),0,keep_dims=True) # fxf
+    H_hat_q = tf.reduce_mean(tf.expand_dims(h_q,-1)@tf.expand_dims(h_q,1),0,keep_dims=True) # 
+    H_hat_m = tf.reduce_mean(tf.expand_dims(h_m,-1)@tf.expand_dims(h_m,1),0,keep_dims=True) # 
+    
+    def calc_loss(H_hat,h_hat):
+        inner_prod = tf.matmul(theta, H_hat) # 1xf
+        quad_term = tf.matmul(inner_prod, theta, transpose_b=True) #1x1
+        lin_term = tf.matmul(h_hat, theta, transpose_b=True)
+        return 0.5*quad_term - lin_term
+        
+    
+    loss1 = calc_loss(H_hat_p,h_hat_p) + calc_loss(H_hat_q,h_hat_q) + calc_loss(H_hat_m,h_hat_m)
+    
+    reg_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+    return loss1 + 0.01 * sum(reg_losses)
 
-    disc_loss_1 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logP, labels=label_a))
-    disc_loss_2 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logQ, labels=label_b))
-    disc_loss_3 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logM, labels=label_c))
+
+
+# def get_loss(p_samples,q_samples,m_samples,m_dist=None,do=0.8, deep=False):
     
-    loss = disc_loss_1 + disc_loss_2 + disc_loss_3
+#     logP = get_logits(p_samples,do,deep=deep)
+#     logQ = get_logits(q_samples,do,deep=deep)
+#     logM = get_logits(m_samples,do,deep=deep)
     
-    if m_dist != None:
-        loss += 1e-5*tf.reduce_mean(m_dist.log_prob(m_samples) - logM[:,2])
-    return loss
+#     a = np.tile([1,0,0],bs)
+#     b = np.tile([0,1,0],bs)
+#     c = np.tile([0,0,1],bs)
+
+#     label_a = tf.reshape(a,[bs,K])
+#     label_b = tf.reshape(b,[bs,K])
+#     label_c = tf.reshape(c,[bs,K])
+
+#     disc_loss_1 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logP, labels=label_a))
+#     disc_loss_2 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logQ, labels=label_b))
+#     disc_loss_3 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logM, labels=label_c))
+    
+#     loss1 = disc_loss_1 + disc_loss_2 + 1*disc_loss_3
+    
+#     loss2 = tf.abs(tf.reduce_mean(logP[:,0])) + tf.abs(tf.reduce_mean(logQ[:,1])) + tf.abs(tf.reduce_mean(logM[:,2]))
+    
+#     reg_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+#     loss = loss1# + 0.01*loss2 #+ 0.001 * sum(reg_losses) + 0.001*loss2
+    
+#     return loss #+ 10000.*loss2 
+
+# def get_loss(p_samples,q_samples,m_samples,m_dist=None,do=0.8, deep=False):
+    
+#     logP = get_logits(p_samples,do,deep=deep)
+#     logQ = get_logits(q_samples,do,deep=deep)
+#     logM = get_logits(m_samples,do,deep=deep)
+    
+#     ratio_p_m_on_p = logP[:,0]-logP[:,2]
+#     ratio_p_m_on_m = logM[:,0]-logM[:,2]
+    
+#     ratio_q_m_on_q = logQ[:,1]-logQ[:,2]
+#     ratio_q_m_on_m = logM[:,1]-logM[:,2]
+    
+#     loss = - ( tf.reduce_mean(- tf.nn.softplus(-(1+ratio_p_m_on_p))) - tf.reduce_mean(tf.nn.softplus(1+ratio_p_m_on_m)) ) - ( tf.reduce_mean(- tf.nn.softplus(-(1+ratio_q_m_on_q))) - tf.reduce_mean(tf.nn.softplus(1+ratio_q_m_on_m)) )
+    
+    
+#     return loss
+
+# def get_loss(p_samples,q_samples,m_samples,m_dist=None,do=0.8, deep=False):
+    
+#     logP = get_logits(p_samples,do,deep=deep)
+#     logQ = get_logits(q_samples,do,deep=deep)
+#     logM = get_logits(m_samples,do,deep=deep)
+    
+#     p_logit = logP[:,0] # log p/m on samples from p
+#     m_logitp = logM[:,0] # log p/m on samples from m
+#     q_logit = logQ[:,1] # log q/m on samples from q
+#     m_logitq = logM[:,1] # log q/m on samples from m
+    
+    
+#     # Define Single DRE
+#     dloss_1 = tf.reduce_mean(
+#         tf.nn.sigmoid_cross_entropy_with_logits(logits=p_logit, labels=tf.ones_like(p_logit)) +
+#         tf.nn.sigmoid_cross_entropy_with_logits(logits=m_logitp, labels=tf.zeros_like(m_logitp)))
+    
+#     dloss_2 = tf.reduce_mean(
+#         tf.nn.sigmoid_cross_entropy_with_logits(logits=q_logit, labels=tf.ones_like(q_logit)) +
+#         tf.nn.sigmoid_cross_entropy_with_logits(logits=m_logitq, labels=tf.zeros_like(m_logitq)))
+    
+#     dloss_3 = tf.reduce_mean(
+#         tf.nn.sigmoid_cross_entropy_with_logits(logits=logP[:,0], labels=tf.ones_like(p_logit)) +
+#         tf.nn.sigmoid_cross_entropy_with_logits(logits=logQ[:,0], labels=tf.zeros_like(m_logitq)))
+    
+# #     dloss = tf.reduce_mean(tf.log_sigmoid(-logP[:,0])) + tf.reduce_mean(tf.log_sigmoid(logQ[:,0]))
+    
+    
+#     return dloss_1 + dloss_2
+
+
 
 def get_optim(loss, lr=0.001, b1=0.001, b2=0.999):
     t_vars = tf.trainable_variables()
@@ -171,8 +417,13 @@ def get_optim(loss, lr=0.001, b1=0.001, b2=0.999):
     c_vars = [var for var in t_vars if 'critic' in var.name]
 #     optim = tf.train.AdamOptimizer(learning_rate=lr, beta1=b1, beta2=b2).minimize(loss, var_list=t_vars)
     optim = tf.train.AdamOptimizer(lr).minimize(loss, var_list=t_vars)
-    return optim
-
+    
+#     global_step = tf.Variable(0, trainable=False)
+#     learning_rate = tf.compat.v1.train.cosine_decay(lr, global_step, 10000, alpha=0.0, name=None)
+#     # Passing global_step to minimize() will increment it at each step.
+#     optim = tf.train.AdamOptimizer(learning_rate).minimize(loss, global_step=global_step)
+    
+    return optim 
 
 def train(sess, loss, optim, plotlosses, N=30000):
 

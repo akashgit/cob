@@ -15,20 +15,20 @@ from time import sleep
 from IPython.display import display, clear_output
 
 
-tol = 1e+8
+tol = 1e+6
 bs = 500
 K = 3
 do = 0.8
 n_posterior_samples = bs 
 
 prior = tfp.layers.default_mean_field_normal_fn(
-    is_singular=False, loc_initializer=tf.initializers.random_normal(stddev=10.),
+    is_singular=False, loc_initializer=tf.initializers.random_normal(stddev=5.),
     untransformed_scale_initializer=tf.initializers.random_normal(mean=0.0,
-    stddev=10.), loc_regularizer=None, untransformed_scale_regularizer=None,
+    stddev=5.), loc_regularizer=None, untransformed_scale_regularizer=None,
     loc_constraint=None, untransformed_scale_constraint=None
 )
 
-layer = tfp.layers.DenseFlipout(K, activation=None) #, kernel_prior_fn=prior
+layer = tfp.layers.DenseFlipout(K, activation=None) #, kernel_prior_fn=prior)
 
 def reset(seed=40): 
     tf.reset_default_graph()
@@ -53,7 +53,6 @@ def ratios_critic(x, prob = 1, K=3, deep=False):
         
         q4 = tf.get_variable('q4',1.)
         q5 = tf.get_variable('q5',1.)
-        q6 = tf.get_variable('q6',1.)
         
         b1 = tf.get_variable('b1',1.)
         b2 = tf.get_variable('b2',1.)
@@ -67,13 +66,13 @@ def ratios_critic(x, prob = 1, K=3, deep=False):
         t2 = tf.get_variable('t2',1.)
         t3 = tf.get_variable('t3',1.)
 
-        h1 = (x-q1)*(x-q1)*s1 + (x-q4)*t1 + b1 
-        h2 = (x-q2)*(x-q2)*s2 + (x-q5)*t2 + b2
-        h3 = t3*(x-q6) + b3
+        h1 = (x-q1)*(x-q1)*s1 + (x-q2)*t1 + b1 
+        h2 = (x-q3)*(x-q3)*s2 + (x-q4)*t2 + b2
+        h3 = t3*(x-q5) + b3
         
         logits = tf.concat([h1,h2,h3],1)
         
-        return logits
+        return logits#, [q1,q2,q4,q5,q6,s1,s2,t1,t2,t3,b1,b2,b3]
 
 
 
@@ -180,7 +179,7 @@ def sample_and_plot(sess, kl_p_q, kl_cob, kld, p_samples, q_samples, m_samples, 
     ax1.hist(q_s, density=True, histtype='stepfilled', alpha=0.8, label='Q')
     ax1.hist(xs, density=True, histtype='stepfilled', alpha=0.8, label='M')
     ax1.legend(loc='best', frameon=False)
-    ax1.set_xlim([-5,5])
+    ax1.set_xlim([mu_1-1,mu_2+1])
     
     ax2.scatter(xs,log_ratio_store[0],label='True p/q',alpha=0.9,s=10.,c='b')
     ax2.scatter(xs,log_r_p_from_m_direct_store[-1][:,0]-log_r_p_from_m_direct_store[-1][:,1],label='CoB p/q',alpha=0.9,s=10.,c='r')
@@ -190,7 +189,7 @@ def sample_and_plot(sess, kl_p_q, kl_cob, kld, p_samples, q_samples, m_samples, 
     ax2.set_xlabel("Samples")
     ax2.set_ylabel("Log Ratio")
     ax2.legend(loc='best')
-    ax2.set_xlim([-4,6])
+    ax2.set_xlim([mu_1-1,mu_2+1])
     ax2.set_ylim([-1000,1000])
     
     pm = [np.squeeze(norm.logpdf(x,mu_1,scale_p)-cauchy.logpdf(x,mu_3,scale_m)) for x in xs]
@@ -203,7 +202,7 @@ def sample_and_plot(sess, kl_p_q, kl_cob, kld, p_samples, q_samples, m_samples, 
     ax4.set_xlabel("Samples")
     ax4.set_ylabel("Log Ratio")
     ax4.legend(loc='best')
-    ax4.set_xlim([-4,6])
+    ax4.set_xlim([mu_1-1,mu_2+1])
     ax4.set_ylim([-1000,1000])
     
     
@@ -216,7 +215,7 @@ def sample_and_plot(sess, kl_p_q, kl_cob, kld, p_samples, q_samples, m_samples, 
     ax3.set_xlabel("Samples")
     ax3.set_ylabel("Log P(x)")
     ax3.legend(loc='best')
-    ax3.set_xlim([-4.,4])
+    ax3.set_xlim([mu_1-1,mu_2+1])
     ax3.set_ylim([-600,400])
 
     plt.show()
@@ -268,7 +267,7 @@ def sample_and_plot(sess, kl_p_q, kl_cob, kld, p_samples, q_samples, m_samples, 
     plt.xlabel("Samples")
     plt.ylabel("Log Ratio")
     plt.legend(loc='upper right')
-    plt.xlim(-4,4)
+    plt.xlim(mu_1-1,mu_2+1)
     plt.ylim(-400,1000)
     plt.show()
     

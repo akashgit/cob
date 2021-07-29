@@ -19,7 +19,7 @@ import os
 tf.keras.backend.set_floatx('float32')
 
 
-tol = 1e+4
+tol = 1e+6
 bs = 500
 K = 3
 do = 0.8
@@ -38,10 +38,10 @@ def reset(seed=40):
 def ratios_critic(x, prob = 1, K=3, deep=False):
     with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:
         
-        h = slim.fully_connected(x, 500, activation_fn=tf.nn.softplus)
+        h = slim.fully_connected(x, 50, activation_fn=tf.nn.softplus)
         h = tf.nn.dropout(h,prob)
         
-        h = slim.fully_connected(h, 100, activation_fn=tf.nn.softplus)
+        h = slim.fully_connected(h, 10, activation_fn=tf.nn.softplus)
         h = tf.nn.dropout(h,prob)
         
         return h #slim.fully_connected(h, K, activation_fn=None, biases_initializer = tf.constant_initializer(0)) #tf.constant_initializer(0))
@@ -55,9 +55,14 @@ def get_gt_ratio_kl(p,q,samples):
 def get_logits(samples, do=1., deep=False, training=True):
     return layer(ratios_critic(samples,do,deep=deep))
 
-def get_kl_from_cob(samples):
-    log_rat = get_logits(samples)
-    return tf.reduce_mean(log_rat[:,0]-log_rat[:,1])
+def get_kl_from_cob(samples_p, samples_q):
+    log_rat = get_logits(samples_p)
+    V_p = log_rat[:,0]-log_rat[:,1]
+    
+    log_rat = get_logits(samples_q)
+    V_q = log_rat[:,0]-log_rat[:,1]
+    
+    return 1 + tf.reduce_mean(V_p) - tf.reduce_mean(tf.exp(V_q))
 
 def get_loss(p_samples,q_samples,m_samples,m_dist=None,do=0.8, deep=False):
     
@@ -221,6 +226,6 @@ def kl_plot(sess,enc_m,ax,ax1, training=True):
 #     ax.boxplot(kl_post.T,widths=0.5,notch=True, showfliers=False)
     ax1.clear()
     ax1.hist(sample_var, density=True, histtype='stepfilled',label='Post Var')
-    return np.mean([sm for sm,sv in zip(sample_mean, sample_var) if sv<20.0])
+    return np.mean([sm for sm,sv in zip(sample_mean, sample_var) if sv<40.0])
     
     
