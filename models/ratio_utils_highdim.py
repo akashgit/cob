@@ -60,35 +60,26 @@ def reset(seed=40):
 def ratios_critic(x, prob = 1, K=3, deep=False):
     with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:
         
-        h = slim.fully_connected(x, 500, activation_fn=tf.nn.softplus)
+        h = slim.fully_connected(x, 500, activation_fn=tf.nn.softplus, weights_regularizer=slim.l2_regularizer(0.00001))
         h = tf.nn.dropout(h,prob)
         
-        h = slim.fully_connected(h, 100, activation_fn=tf.nn.softplus)
+        h = slim.fully_connected(h, 100, activation_fn=tf.nn.softplus, weights_regularizer=slim.l2_regularizer(0.00001))
         h = tf.nn.dropout(h,prob)
         
-        return slim.fully_connected(h, K, activation_fn=None, biases_initializer = tf.constant_initializer(0)) #tf.constant_initializer(0))
-    
-# def ratios_critic(x, prob = 1, K=3, deep=False):
-#     with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:    
+        return slim.fully_connected(h, K, activation_fn=None, weights_regularizer=slim.l2_regularizer(0.00000), biases_initializer = tf.constant_initializer(0)) 
 
-#         l1 = slim.fully_connected(x, 20, activation_fn=tf.nn.softplus)
-#         l1 = tf.nn.dropout(l1,prob)
-#         l1 = slim.fully_connected(l1, 10, activation_fn=tf.nn.softplus)
-#         l1 = tf.nn.dropout(l1,prob)
-
-#         l2 = slim.fully_connected(x, 20, activation_fn=tf.nn.softplus)
-#         l2 = tf.nn.dropout(l2,prob)
-#         l2 = slim.fully_connected(l2, 10, activation_fn=tf.nn.softplus)
-#         l2 = tf.nn.dropout(l2,prob)
-
-#         l3 = slim.fully_connected(x, 20, activation_fn=tf.nn.softplus)
-#         l3 = tf.nn.dropout(l3,prob)
-#         l3 = slim.fully_connected(l3, 10, activation_fn=tf.nn.softplus)
-#         l3 = tf.nn.dropout(l3,prob)
+def ratios_critic(x, prob = 1, K=3, deep=False):
+    with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:
         
-#         log_d = tf.concat([l1,l2,l3],1)
-#         log_d = slim.fully_connected(log_d, K, activation_fn=None) 
-#     return tf.squeeze(log_d)
+        
+        
+        h = slim.fully_connected(x, 500, activation_fn=tf.nn.softplus, weights_regularizer=slim.l2_regularizer(0.00001))
+        h = tf.nn.dropout(h,prob)
+        
+        h = slim.fully_connected(h, 100, activation_fn=tf.nn.softplus, weights_regularizer=slim.l2_regularizer(0.00001))
+        h = tf.nn.dropout(h,prob)
+        
+        return slim.fully_connected(h, K, activation_fn=None, weights_regularizer=slim.l2_regularizer(0.00000), biases_initializer = tf.constant_initializer(0)) 
 
 
 
@@ -137,9 +128,12 @@ def get_logits(samples, do=1., deep=False, training=True):
 #     samples = tf.expand_dims(samples,1)
     return ratios_critic(samples,do,deep=deep)
 
-def get_kl_from_cob(samples):
-    log_rat = get_logits(samples)
-    return tf.reduce_mean(log_rat[:,0]-log_rat[:,1])
+def get_kl_from_cob(samples_p, samples_q):
+    log_rat = get_logits(samples_p)
+    V_p = log_rat[:,0]-log_rat[:,1]
+    log_rat = get_logits(samples_q)
+    V_q = log_rat[:,0]-log_rat[:,1]
+    return 1 + tf.reduce_mean(V_p) - tf.reduce_mean(tf.exp(V_q))
 
 def get_loss(p_samples,q_samples,m_samples,m_dist=None,do=0.8, deep=False):
     
@@ -163,7 +157,9 @@ def get_loss(p_samples,q_samples,m_samples,m_dist=None,do=0.8, deep=False):
     
     if m_dist != None:
         loss += 1e-5*tf.reduce_mean(m_dist.log_prob(m_samples) - logM[:,2])
-    return loss
+    
+    reg = tf.add_n(slim.losses.get_regularization_losses())
+    return loss + reg
 
 def get_optim(loss, lr=0.001, b1=0.001, b2=0.999):
     t_vars = tf.trainable_variables()
