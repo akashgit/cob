@@ -26,7 +26,7 @@ tol = 1e-35
 bs = 1000
 K = 3
 do = 0.8
-n_dims=80
+n_dims=320
 mi=40
 
 
@@ -62,68 +62,68 @@ print(b1)
 #         return -500+slim.fully_connected(h, K, activation_fn=None)
 
 
-def ratios_critic(x, prob = 1, K=3, deep=False, l1=500,l2=n_dims,input_dim=n_dims):
-    with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:
-        
-        init = tf.keras.initializers.normal(stddev=0.001)
-        h = x
-         
-        h3 = slim.fully_connected(x, l1, activation_fn=tf.nn.softplus) 
-        h3 = -slim.fully_connected(h3, 1, activation_fn=tf.nn.relu)
-        
-        W_psd1 = tf.get_variable('W1',(l2,l2),initializer=tf.keras.initializers.Identity()) #, initializer=tf.zeros_initializer()
-        W_psd2 = tf.get_variable('W2',(l2,l2),initializer=tf.keras.initializers.Identity(),trainable=True) #,initializer=init
-        
-        mu1 = tf.get_variable('mu1',(input_dim,1),initializer=tf.constant_initializer(-1))
-        mu2 = tf.get_variable('mu2',(input_dim,1),initializer=tf.constant_initializer(1))
-        
-        b1 = tf.get_variable('b1',(1),initializer=tf.constant_initializer(-320))
-        b2 = tf.get_variable('b2',(1),initializer=tf.constant_initializer(-320))
-        
-        eta1 = tf.matmul(W_psd1,mu1) # 320x1
-        print(eta1)
-        eta2 = tf.matmul(W_psd2,mu2)
-        
-        
-        h = tf.expand_dims(x,-1)
-        xxT = tf.matmul(h,h,transpose_b=True)
-        
-        h1 = tf.matmul(W_psd1,xxT)
-        h1 = tf.expand_dims(tf.trace(h1),-1)
-        cons1 = tf.squeeze(tf.matmul(tf.matmul(eta1,W_psd1,transpose_a=True),eta1))
-        h1 = tf.squeeze(tf.matmul(eta1, h, transpose_a=True),-1) - 0.5*h1 - 0.5*cons1 + b1
-        print(h1)
-        
-        h2 = tf.matmul(W_psd2,xxT)
-        h2 = tf.expand_dims(tf.trace(h2),-1)
-        cons2 = tf.squeeze(tf.matmul(tf.matmul(eta2,W_psd2,transpose_a=True),eta2))
-        h2 = tf.squeeze(tf.matmul(eta2, h, transpose_a=True),-1) - 0.5*h2 - 0.5*cons2 + b2
-        print(h2)
-        
-        return tf.squeeze(tf.concat([h1,h2,-450+h3],1))
-    
 # def ratios_critic(x, prob = 1, K=3, deep=False, l1=500,l2=n_dims,input_dim=n_dims):
 #     with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:
         
+#         init = tf.keras.initializers.normal(stddev=0.001)
+#         h = x
+         
 #         h3 = slim.fully_connected(x, l1, activation_fn=tf.nn.softplus) 
-#         h3 = -slim.fully_connected(h3, 1, activation_fn=tf.nn.relu) #, biases_initializer = tf.constant_initializer(0)
+#         h3 = -slim.fully_connected(h3, 1, activation_fn=tf.nn.relu)
         
 #         W_psd1 = tf.get_variable('W1',(l2,l2),initializer=tf.keras.initializers.Identity()) #, initializer=tf.zeros_initializer()
 #         W_psd2 = tf.get_variable('W2',(l2,l2),initializer=tf.keras.initializers.Identity(),trainable=True) #,initializer=init
-#         b1 = tf.get_variable('b1',(1),initializer=tf.constant_initializer(-170)) #320
-#         b2 = tf.get_variable('b2',(1),initializer=tf.constant_initializer(-170))
+        
+#         mu1 = tf.get_variable('mu1',(input_dim,1),initializer=tf.constant_initializer(-1))
+#         mu2 = tf.get_variable('mu2',(input_dim,1),initializer=tf.constant_initializer(1))
+        
+#         b1 = tf.get_variable('b1',(1),initializer=tf.constant_initializer(-320))
+#         b2 = tf.get_variable('b2',(1),initializer=tf.constant_initializer(-320))
+        
+#         eta1 = tf.matmul(W_psd1,mu1) # 320x1
+#         print(eta1)
+#         eta2 = tf.matmul(W_psd2,mu2)
+        
         
 #         h = tf.expand_dims(x,-1)
+#         xxT = tf.matmul(h,h,transpose_b=True)
         
-#         h1 = tf.matmul(h,W_psd1,transpose_a=True)
-#         h1 = tf.matmul(h1,h)
-#         h1 = tf.squeeze(- 0.5*h1 + (b1),-1)
+#         h1 = tf.matmul(W_psd1,xxT)
+#         h1 = tf.expand_dims(tf.trace(h1),-1)
+#         cons1 = tf.squeeze(tf.matmul(tf.matmul(eta1,W_psd1,transpose_a=True),eta1))
+#         h1 = tf.squeeze(tf.matmul(eta1, h, transpose_a=True),-1) - 0.5*h1 - 0.5*cons1 + b1
+#         print(h1)
         
-#         h2 = tf.matmul(h,W_psd2,transpose_a=True)
-#         h2 = tf.matmul(h2,h)
-#         h2 = tf.squeeze(- 0.5*h2 + (b2),-1)
+#         h2 = tf.matmul(W_psd2,xxT)
+#         h2 = tf.expand_dims(tf.trace(h2),-1)
+#         cons2 = tf.squeeze(tf.matmul(tf.matmul(eta2,W_psd2,transpose_a=True),eta2))
+#         h2 = tf.squeeze(tf.matmul(eta2, h, transpose_a=True),-1) - 0.5*h2 - 0.5*cons2 + b2
+#         print(h2)
         
-#         return tf.squeeze(tf.concat([h1,h2,-320+h3],1)) #450
+#         return tf.squeeze(tf.concat([h1,h2,-450+h3],1))
+    
+def ratios_critic(x, prob = 1, K=3, deep=False, l1=n_dims,l2=n_dims,input_dim=n_dims):
+    with tf.variable_scope('critic', reuse=tf.AUTO_REUSE) as scope:
+        
+        h3 = slim.fully_connected(x, l1, activation_fn=tf.nn.softplus) 
+        h3 = -slim.fully_connected(h3, 1, activation_fn=tf.nn.relu) #, biases_initializer = tf.constant_initializer(0)
+        
+        W_psd1 = tf.get_variable('W1',(l2,l2),initializer=tf.keras.initializers.Identity()) #, initializer=tf.zeros_initializer()
+        W_psd2 = tf.get_variable('W2',(l2,l2),initializer=tf.keras.initializers.Identity(),trainable=True) #,initializer=init
+        b1 = tf.get_variable('b1',(1),initializer=tf.constant_initializer(-320)) #320
+        b2 = tf.get_variable('b2',(1),initializer=tf.constant_initializer(-320))
+        
+        h = tf.expand_dims(x,-1)
+        
+        h1 = tf.matmul(h,W_psd1,transpose_a=True)
+        h1 = tf.matmul(h1,h)
+        h1 = tf.squeeze(- 0.5*h1 + (b1),-1) + slim.fully_connected(x, 1, activation_fn=None, biases_initializer=None) 
+        
+        h2 = tf.matmul(h,W_psd2,transpose_a=True)
+        h2 = tf.matmul(h2,h)
+        h2 = tf.squeeze(- 0.5*h2 + (b2),-1) + slim.fully_connected(x, 1, activation_fn=None, biases_initializer=None) 
+        
+        return tf.squeeze(tf.concat([h1,h2,-450+h3],1)) #450
 
 def get_gt_ratio_kl(p,q,samples):
     ratio = p.log_prob(samples) - q.log_prob(samples)
