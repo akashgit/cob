@@ -26,8 +26,8 @@ tol = 1e-35
 bs = 1000
 K = 3
 do = 0.8
-n_dims=320
-mi=40
+n_dims=40
+mi=20
 
 
 def reset(seed=40):
@@ -39,19 +39,20 @@ def get_rho_from_mi(mi, n_dims):
     x = (4 * mi) / n_dims
     return (1 - np.exp(-x)) ** 0.5  # correlation coefficient
 
-rho = get_rho_from_mi(mi, n_dims)  # correlation coefficient
-rhos = np.ones(n_dims // 2, dtype="float32") * rho
-W = [[1, rho], [rho, 1]]
-W_psd1 = inv(block_diag(*[W for _ in range(n_dims // 2)]))
-print(0.5*np.log(det(W_psd1)))
+# rho = get_rho_from_mi(mi, n_dims)  # correlation coefficient
+# print(rho)
+# rhos = np.ones(n_dims // 2, dtype="float32") * rho
+# W = [[1, rho], [rho, 1]]
+# W_psd1 = inv(block_diag(*[W for _ in range(n_dims // 2)]))
+# print(0.5*np.log(det(W_psd1)))
 
-b1 = -(n_dims//2)*np.log(2*np.pi) + 0.5*np.log(det(W_psd1))
-b2 = -(n_dims//2)*np.log(2*np.pi)
+# b1 = -(n_dims//2)*np.log(2*np.pi) + 0.5*np.log(det(W_psd1))
+# b2 = -(n_dims//2)*np.log(2*np.pi)
 
-W_psd1 = np.float32(W_psd1)
-b1 = np.float32(b1)
-b2 = np.float32(b2)
-print(b1)
+# W_psd1 = np.float32(W_psd1)
+# b1 = np.float32(b1)
+# b2 = np.float32(b2)
+# print(b1)
 
 
 # def ratios_critic(x, prob = 1, K=3, deep=False):
@@ -110,8 +111,8 @@ def ratios_critic(x, prob = 1, K=3, deep=False, l1=n_dims,l2=n_dims,input_dim=n_
         
         W_psd1 = tf.get_variable('W1',(l2,l2),initializer=tf.keras.initializers.Identity()) #, initializer=tf.zeros_initializer()
         W_psd2 = tf.get_variable('W2',(l2,l2),initializer=tf.keras.initializers.Identity(),trainable=True) #,initializer=init
-        b1 = tf.get_variable('b1',(1),initializer=tf.constant_initializer(-320)) #320
-        b2 = tf.get_variable('b2',(1),initializer=tf.constant_initializer(-320))
+        b1 = tf.get_variable('b1',(1),initializer=tf.constant_initializer(-120)) #320
+        b2 = tf.get_variable('b2',(1),initializer=tf.constant_initializer(-120))
         
         h = tf.expand_dims(x,-1)
         
@@ -123,7 +124,7 @@ def ratios_critic(x, prob = 1, K=3, deep=False, l1=n_dims,l2=n_dims,input_dim=n_
         h2 = tf.matmul(h2,h)
         h2 = tf.squeeze(- 0.5*h2 + (b2),-1) + slim.fully_connected(x, 1, activation_fn=None, biases_initializer=None) 
         
-        return tf.squeeze(tf.concat([h1,h2,-450+h3],1)) #450
+        return tf.squeeze(tf.concat([h1,h2,-150+h3],1)) #450
 
 def get_gt_ratio_kl(p,q,samples):
     ratio = p.log_prob(samples) - q.log_prob(samples)
@@ -181,10 +182,11 @@ def get_optim(loss, lr=0.001, b1=0.001, b2=0.999):
 #     optim = tf.train.AdamOptimizer(learning_rate=lr, beta1=b1, beta2=b2).minimize(loss, var_list=t_vars)
     optim = tf.train.AdamOptimizer(lr).minimize(loss, var_list=t_vars)
     
-#     global_step = tf.Variable(0, trainable=False)
-#     learning_rate = tf.compat.v1.train.cosine_decay(lr, global_step, 10000, alpha=0.0, name=None)
-#     # Passing global_step to minimize() will increment it at each step.
-#     optim = tf.train.AdamOptimizer(learning_rate).minimize(loss, global_step=global_step)
+    global_step = tf.Variable(0, trainable=False)
+    learning_rate = tf.compat.v1.train.cosine_decay(lr, global_step, 4000, alpha=0.01, name=None)
+#     learning_rate = tf.compat.v1.train.cosine_decay(lr, global_step, 20000, alpha=0.01, name=None)
+    # Passing global_step to minimize() will increment it at each step.
+    optim = tf.train.AdamOptimizer(learning_rate).minimize(loss, global_step=global_step)
     
     return optim 
 
